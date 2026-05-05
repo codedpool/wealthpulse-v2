@@ -42,10 +42,13 @@ async def get_current_price(symbol: str, asset_type: str, redis) -> float | None
     return float(val) if val else None
 
 
-async def get_price_series(symbol: str, db: AsyncSession) -> list[float]:
+async def get_price_series(symbol: str, asset_type: str, db: AsyncSession) -> list[float]:
+    # Crypto holdings use CoinGecko ids (e.g. "bitcoin") but price_history is
+    # keyed by the Binance symbol (e.g. "btcusdt"). Translate before querying.
+    lookup = COIN_ID_TO_SYMBOL.get(symbol.lower(), symbol) if asset_type == "crypto" else symbol
     result = await db.execute(
         select(PriceHistory.close_price)
-        .where(PriceHistory.symbol == symbol)
+        .where(PriceHistory.symbol == lookup)
         .order_by(desc(PriceHistory.price_date))
         .limit(365)
     )
@@ -112,7 +115,7 @@ async def portfolio_analytics(
         holding_xirr = xirr(cashflows)
 
         # Fetch price series (same logic as before)
-        price_series = await get_price_series(symbol, db)
+        price_series = await get_price_series(symbol, assettype, db)
         if len(price_series) < 2:
             price_series = [avg_buy_price, current_price]
 

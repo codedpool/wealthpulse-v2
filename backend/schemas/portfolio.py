@@ -22,12 +22,12 @@ class HoldingCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_buy_date(self) -> "HoldingCreate":
-        """Validate buy_date: no future dates, no dates before 2000."""
+        """Validate buy_date: must be in the past, no dates before 2000."""
         min_date = date(2000, 1, 1)
         today = date.today()
 
-        if self.buy_date > today:
-            raise ValueError("Buy date cannot be in the future")
+        if self.buy_date >= today:
+            raise ValueError("Buy date must be in the past")
         if self.buy_date < min_date:
             raise ValueError("Buy date cannot be before January 1, 2000")
 

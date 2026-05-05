@@ -103,10 +103,12 @@ export default function PortfolioPage() {
           quantity: holding.quantity,
           buy_price: holding.buy_price,
           current_price: holding.current_price,
+          current_value: holding.current_value,
+          invested: holding.invested,
           // Add computed metrics in risk_volatility structure for portfolio metric calculations
           risk_volatility: holding.risk || {},
-          // Include montecarlo data
-          montecarlo: holding.montecarlo || {},
+          // Include monte carlo data
+          montecarlo: holding.monte_carlo || {},
           // Store raw holding data for modal display
           _backendHolding: holding,
         }));
@@ -168,8 +170,10 @@ export default function PortfolioPage() {
           quantity: holding.quantity,
           buy_price: holding.buy_price,
           current_price: holding.current_price,
+          current_value: holding.current_value,
+          invested: holding.invested,
           risk_volatility: holding.risk || {},
-          montecarlo: holding.montecarlo || {},
+          montecarlo: holding.monte_carlo || {},
           _backendHolding: holding,
         }));
         setPortfolioItems(itemsWithMetrics);
@@ -251,8 +255,10 @@ export default function PortfolioPage() {
           quantity: holding.quantity,
           buy_price: holding.buy_price,
           current_price: holding.current_price,
+          current_value: holding.current_value,
+          invested: holding.invested,
           risk_volatility: holding.risk || {},
-          montecarlo: holding.montecarlo || {},
+          montecarlo: holding.monte_carlo || {},
           _backendHolding: holding,
         }));
         setPortfolioItems(itemsWithMetrics);

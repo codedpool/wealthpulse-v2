@@ -141,7 +141,12 @@ export default function StockDetailsPage() {
   // Portfolio form state
   const [buyPrice, setBuyPrice] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [buyDate, setBuyDate] = useState("");
+  const maxBuyDate = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split("T")[0];
+  })();
+  const [buyDate, setBuyDate] = useState(maxBuyDate);
 
   const { user, isSignedIn } = useUser();
   const router = useRouter();
@@ -287,13 +292,18 @@ export default function StockDetailsPage() {
       return;
     }
 
-    if (!quantity || quantity <= 0) {
-      alert("Please enter a valid quantity");
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      alert("Quantity must be a whole number (1 or more)");
       return;
     }
 
     if (!buyDate) {
       alert("Please select a buy date");
+      return;
+    }
+
+    if (buyDate > maxBuyDate) {
+      alert("Buy date must be in the past");
       return;
     }
 
@@ -464,11 +474,11 @@ export default function StockDetailsPage() {
                         </label>
                         <input
                           type="number"
-                          step="0.01"
-                          min="0"
+                          step="1"
+                          min="1"
                           value={quantity}
                           onChange={(e) =>
-                            setQuantity(parseFloat(e.target.value) || 0)
+                            setQuantity(parseInt(e.target.value, 10) || 0)
                           }
                           className="w-full bg-[#232b44] text-white rounded-lg p-3 text-base focus:outline-none focus:ring-2 focus:ring-purple-500"
                         />
@@ -481,9 +491,8 @@ export default function StockDetailsPage() {
                         </label>
                         <input
                           type="date"
-                          value={
-                            buyDate || new Date().toISOString().split("T")[0]
-                          }
+                          value={buyDate}
+                          max={maxBuyDate}
                           onChange={(e) => setBuyDate(e.target.value)}
                           className="w-full bg-[#232b44] text-white rounded-lg p-3 text-base focus:outline-none focus:ring-2 focus:ring-purple-500"
                         />

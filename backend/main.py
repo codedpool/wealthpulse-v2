@@ -63,6 +63,11 @@ async def startup():
         print(f"WARNING: Redis unavailable on startup: {e}")
         print("App will continue without caching. Live prices will be unavailable.")
 
+    if not settings.WORKERS_ENABLED:
+        print("WORKERS_ENABLED=false — skipping price workers, AMFI cron and backfills")
+        print("WealthPulse v2 started (API only)")
+        return
+
     # Binance worker
     try:
         asyncio.create_task(binance_price_worker())

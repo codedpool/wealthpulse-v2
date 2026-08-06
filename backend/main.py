@@ -1,7 +1,9 @@
 # WealthPulse API Entry Point
 import asyncio
 import os
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request
+from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
@@ -128,6 +130,41 @@ app.include_router(crypto_router)
 @app.get("/")
 async def root():
     return {"status": "WealthPulse v2 running"}
+
+
+@app.get("/health")
+async def health():
+    """Keep-alive + status endpoint, hit by an external pinger.
+
+    Runs a real SQL query (counts as activity for Neon) and a real Redis
+    write (counts as activity for Upstash, resetting its 14-day inactivity
+    clock). Always returns 200 so the pinger doesn't alert on partial
+    outages; the body says which dependency is down.
+    """
+    from core.redis import get_redis
+
+    db_status = "ok"
+    redis_status = "ok"
+
+    try:
+        async for db in get_db():
+            await db.execute(text("SELECT 1"))
+            break
+    except Exception as e:
+        db_status = "down"
+        print(f"[health] database check failed: {e!r}")
+
+    try:
+        redis = await get_redis()
+        await redis.ping()  # raises when Redis is unreachable
+        await redis.setex(
+            "keepalive:ping", 86400, datetime.now(timezone.utc).isoformat()
+        )
+    except Exception as e:
+        redis_status = "down"
+        print(f"[health] redis check failed: {e!r}")
+
+    return {"status": "ok", "db": db_status, "redis": redis_status}
 
 
 @app.exception_handler(Exception)

@@ -10,6 +10,16 @@ async def test_root():
     assert response.json()["status"] == "WealthPulse v2 running"
 
 @pytest.mark.asyncio
+async def test_health():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["db"] in ("ok", "down")
+    assert body["redis"] in ("ok", "down")
+
+@pytest.mark.asyncio
 async def test_analytics_no_auth():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         response = await ac.get("/api/analytics/portfolio")

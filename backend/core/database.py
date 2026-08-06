@@ -8,8 +8,9 @@ from core.config import settings
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
-    # Neon suspends idle computes; pre-ping + recycle replace connections
-    # that died while the database was paused instead of erroring.
+    # Free-tier Postgres (Supabase) sits behind a pooler that drops idle
+    # connections; pre-ping + recycle replace dead connections instead of
+    # erroring on the first query after a quiet period.
     pool_pre_ping=True,
     pool_recycle=300,
     pool_size=5,
@@ -29,8 +30,9 @@ async def get_db():
 async def with_db_retry(fn, retries: int = 2, delay: float = 2.0):
     """Run an async DB operation, retrying on connection failures.
 
-    The first connection after a Neon cold start can fail or time out
-    while the compute wakes up (a few seconds).
+    The first connection after the database has been idle (pooler dropped
+    the connections, or the hosted project was just restored from a pause)
+    can fail or time out for a few seconds.
     """
     for attempt in range(retries + 1):
         try:

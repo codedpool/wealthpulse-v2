@@ -141,8 +141,9 @@ async def root():
 async def health():
     """Keep-alive + status endpoint, hit by an external pinger.
 
-    Runs a real SQL query (counts as activity for Neon) and a real Redis
-    write (counts as activity for Upstash, resetting its 14-day inactivity
+    Runs a real SQL query (counts as activity for Supabase, whose free
+    projects pause after ~7 idle days and need a MANUAL restore from the
+    dashboard) and a real Redis write (resets Upstash's 14-day inactivity
     clock). Always returns 200 so the pinger doesn't alert on partial
     outages; the body says which dependency is down.
     """

@@ -12,8 +12,9 @@ FALLBACK_SYMBOLS = [
     "ICICIBANK.NS", "WIPRO.NS", "SBIN.NS", "BAJFINANCE.NS"
 ]
 
-# Querying Postgres every poll keeps Neon's compute awake 24/7 and burns
-# the free-tier quota, so the symbol list is cached and refreshed rarely.
+# No need to hit Postgres on every 60s poll — the symbol list changes only
+# when holdings change, so it is cached and refreshed rarely to keep load
+# off the free-tier database.
 SYMBOL_CACHE_TTL = 600  # seconds
 _symbol_cache: list[str] = []
 _symbol_cache_at: float = 0.0
@@ -58,7 +59,7 @@ async def india_stocks_worker():
 
     while True:
         try:
-            # Fetch symbols from holdings (cached to let Neon auto-suspend)
+            # Fetch symbols from holdings (cached, see SYMBOL_CACHE_TTL)
             symbols = await get_cached_nse_symbols()
             if not symbols:
                 symbols = FALLBACK_SYMBOLS

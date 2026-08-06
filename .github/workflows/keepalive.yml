@@ -1,7 +1,8 @@
 # Keeps the free-tier stack alive:
 #   - the request keeps Render from spinning down (so in-app workers/crons run)
-#   - /health runs a real SQL query (Neon activity) and a Redis write
-#     (resets Upstash's 14-day inactivity clock)
+#   - /health runs a real SQL query (Supabase counts it as activity — free
+#     projects pause after ~7 idle days and only a manual dashboard restore
+#     brings them back) and a Redis write (resets Upstash's 14-day clock)
 #
 # Setup: add a repository variable RENDER_APP_URL (Settings -> Secrets and
 # variables -> Actions -> Variables), e.g. https://wealthpulse-api.onrender.com

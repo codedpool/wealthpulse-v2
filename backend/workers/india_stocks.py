@@ -91,6 +91,7 @@ async def india_stocks_worker():
                 price = str(round(float(closes[symbol]), 2))
                 redis_key = f"price:stock:{symbol.lower().replace('.', '_')}"
                 await redis_client.setex(redis_key, 120, price)
+                await redis_client.setex(f"last:{redis_key}", 604800, price)
                 await redis_client.publish(
                     "prices",
                     json.dumps({"symbol": symbol.lower(), "price": price, "type": "india_stock"})

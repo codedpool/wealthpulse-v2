@@ -1,6 +1,9 @@
 import httpx
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from core.database import get_db
 from core.redis import get_redis
+from services.prices import resolve_price
 
 router = APIRouter(prefix="/api/market", tags=["Market"])
 
@@ -50,64 +53,59 @@ async def get_mutualfund_nav(scheme_code: str):
 # ── INDIAN STOCKS ──────────────────────────────────────────────────────────
 
 @router.get("/stocks/india")
-async def get_india_stock_price(symbol: str = Query(...)):
+async def get_india_stock_price(symbol: str = Query(...), db: AsyncSession = Depends(get_db)):
     redis = await get_redis()
-    key = f"price:stock:{symbol.lower().replace('.', '_')}"
-    price = await redis.get(key)
+    price, stale = await resolve_price(symbol, "stock", redis, db)
     return {
         "symbol": symbol,
-        "price": float(price) if price else None,
+        "price": price,
         "source": "yfinance",
-        "cached": price is not None
+        "cached": price is not None,
+        "stale": stale,
     }
 
 
 # ── US STOCKS ──────────────────────────────────────────────────────────────
 
 @router.get("/stocks/us")
-async def get_us_stock_price(symbol: str = Query(...)):
+async def get_us_stock_price(symbol: str = Query(...), db: AsyncSession = Depends(get_db)):
     redis = await get_redis()
-    key = f"price:stock:{symbol.lower()}"
-    price = await redis.get(key)
+    price, stale = await resolve_price(symbol, "stock", redis, db)
     return {
         "symbol": symbol,
-        "price": float(price) if price else None,
+        "price": price,
         "source": "finnhub",
-        "cached": price is not None
+        "cached": price is not None,
+        "stale": stale,
     }
 
 
 # ── CRYPTO ─────────────────────────────────────────────────────────────────
 
 @router.get("/crypto")
-async def get_crypto_price(symbol: str = Query(...)):
+async def get_crypto_price(symbol: str = Query(...), db: AsyncSession = Depends(get_db)):
     redis = await get_redis()
-    key = f"price:crypto:{symbol.lower()}usdt"
-    price = await redis.get(key)
+    price, stale = await resolve_price(symbol, "crypto", redis, db)
     return {
         "symbol": symbol.upper(),
-        "price": float(price) if price else None,
+        "price": price,
         "source": "binance",
-        "cached": price is not None
+        "cached": price is not None,
+        "stale": stale,
     }
 
 
 # ── UNIFIED PRICE LOOKUP ───────────────────────────────────────────────────
 
 @router.get("/price/{asset_type}/{symbol}")
-async def get_price(asset_type: str, symbol: str):
+async def get_price(asset_type: str, symbol: str, db: AsyncSession = Depends(get_db)):
     redis = await get_redis()
-    key_map = {
-        "stock": f"price:stock:{symbol.lower().replace('.', '_')}",
-        "crypto": f"price:crypto:{symbol.lower()}usdt",
-        "mutualfund": f"nav:{symbol}",
-    }
-    key = key_map.get(asset_type)
-    if not key:
+    if asset_type not in ("stock", "crypto", "mutualfund"):
         return {"error": "Invalid asset_type"}
-    price = await redis.get(key)
+    price, stale = await resolve_price(symbol, asset_type, redis, db)
     return {
         "symbol": symbol,
         "asset_type": asset_type,
-        "price": float(price) if price else None,
+        "price": price,
+        "stale": stale,
     }

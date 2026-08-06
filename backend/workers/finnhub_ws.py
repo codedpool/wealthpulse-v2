@@ -37,6 +37,8 @@ async def finnhub_price_worker():
                             symbol = trade["s"].lower().replace(".", "_")
                             price  = str(trade["p"])
                             await redis_client.setex(f"price:stock:{symbol}", 30, price)
+                            # last-known copy — US market is closed ~18h/day
+                            await redis_client.setex(f"last:price:stock:{symbol}", 604800, price)
                             await redis_client.publish(
                                 "prices",
                                 json.dumps({"symbol": symbol, "price": price, "type": "stock"})
@@ -49,7 +51,7 @@ async def finnhub_price_worker():
             if "429" in str(e) or "Too Many Requests" in str(e):
                 print(f"🚫 Rate limited by Finnhub. Backing off for {backoff_time}s...")
                 await asyncio.sleep(backoff_time)
-                backoff_time = min(backoff_time * 2, max_backoff)  # Exponential backoff
+                backoff_time = min(backoff_time * 2, max_backoff)
             else:
                 print(f"❌ Finnhub connection error: {e}. Retrying in {backoff_time}s...")
                 await asyncio.sleep(backoff_time)

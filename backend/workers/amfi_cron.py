@@ -61,6 +61,7 @@ async def parse_and_store_navs():
                 """), {"symbol": code, "date": date_str, "price": nav})
                 # Update Redis with latest NAV for this scheme (1-hour TTL)
                 await redis.setex(f"nav:{code}", 3600, str(nav))
+                await redis.setex(f"last:nav:{code}", 604800, str(nav))
                 count += 1
             except Exception as e:
                 print(f"Error for {code}: {e}")

@@ -10,36 +10,14 @@ from models.holding import Holding
 from models.price_history import PriceHistory
 from models.snapshot import PortfolioSnapshot
 from services.analytics import calc_pnl, xirr, calc_risk_metrics, monte_carlo, numpy_to_python
-from services.price_backfill import COIN_ID_TO_SYMBOL
+from services.prices import resolve_price
 
 router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
 
 
-def _crypto_redis_key(symbol: str) -> str:
-    """
-    Map CoinGecko-style coin id (e.g. "ethereum") to the Binance
-    Redis key written by binance_ws.py (e.g. "price:crypto:ethusdt").
-    Falls back to symbol + "usdt" if not in the mapping.
-    """
-    sym = symbol.lower()
-    binance_sym = COIN_ID_TO_SYMBOL.get(sym)
-    if binance_sym:
-        return f"price:crypto:{binance_sym}"
-    return f"price:crypto:{sym}usdt"
-
-
-REDIS_PRICE_KEYS = {
-    "stock": lambda s: f"price:stock:{s.lower().replace('.', '_')}",
-    "crypto": _crypto_redis_key,
-    "mutualfund": lambda s: f"nav:{s}",
-}
-
-async def get_current_price(symbol: str, asset_type: str, redis) -> float | None:
-    key_fn = REDIS_PRICE_KEYS.get(asset_type)
-    if not key_fn:
-        return None
-    val = await redis.get(key_fn(symbol))
-    return float(val) if val else None
+async def get_current_price(symbol: str, asset_type: str, redis, db=None) -> float | None:
+    price, _stale = await resolve_price(symbol, asset_type, redis, db)
+    return price
 
 
 async def get_price_series(symbol: str, db: AsyncSession) -> list[float]:
@@ -93,7 +71,7 @@ async def portfolio_analytics(
         avg_buy_price = (total_lot_invested / total_qty) if total_qty > 0 else 0
 
         # Get current price (single lookup per symbol)
-        current_price = await get_current_price(symbol, assettype, redis)
+        current_price = await get_current_price(symbol, assettype, redis, db)
         if current_price is None or current_price <= 0:
             current_price = avg_buy_price
 

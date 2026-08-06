@@ -97,13 +97,17 @@ async def remove_holding(
 
 
 @router.post("/test-nav-refresh")
-async def test_nav_refresh():
+async def test_nav_refresh(user: dict = Depends(get_current_user)):
     await parse_and_store_navs()
     return {"message": "NAV refresh triggered"}
 
 
 @router.post("/backfill-nav/{scheme_code}")
-async def backfill_nav(scheme_code: str, db: AsyncSession = Depends(get_db)):
+async def backfill_nav(
+    scheme_code: str,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     import httpx
     from datetime import datetime
 

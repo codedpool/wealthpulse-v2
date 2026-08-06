@@ -162,7 +162,7 @@ async def portfolio_history(
 
 
 @router.post("/test-snapshot")
-async def test_snapshot():
+async def test_snapshot(user=Depends(get_current_user)):
     from workers.amfi_cron import take_daily_snapshot
     await take_daily_snapshot()
     return {"message": "Snapshot triggered"}

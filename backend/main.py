@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 from core.limiter import limiter
 from core.redis import init_redis
-from core.database import get_db
+from core.database import get_db, with_db_retry
 from core.config import settings
 from api.portfolio import router as portfolio_router
 from api.stream import router as stream_router
@@ -89,9 +89,11 @@ async def startup():
     # Stock history backfill
     try:
         async def run_backfill():
-            async for db in get_db():
-                await backfill_stock_history(db)
-                break
+            async def _do():
+                async for db in get_db():
+                    await backfill_stock_history(db)
+                    break
+            await with_db_retry(_do)
 
         asyncio.create_task(run_backfill())
     except Exception as e:
@@ -100,9 +102,11 @@ async def startup():
     # Crypto history backfill
     try:
         async def run_crypto_backfill():
-            async for db in get_db():
-                await backfill_crypto_history(db)
-                break
+            async def _do():
+                async for db in get_db():
+                    await backfill_crypto_history(db)
+                    break
+            await with_db_retry(_do)
 
         asyncio.create_task(run_crypto_backfill())
     except Exception as e:

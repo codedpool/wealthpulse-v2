@@ -1,0 +1,32 @@
+# Keeps the free-tier stack alive:
+#   - the request keeps Render from spinning down (so in-app workers/crons run)
+#   - /health runs a real SQL query (Supabase counts it as activity — free
+#     projects pause after ~7 idle days and only a manual dashboard restore
+#     brings them back) and a Redis write (resets Upstash's 14-day clock)
+#
+# Setup: add a repository variable RENDER_APP_URL (Settings -> Secrets and
+# variables -> Actions -> Variables), e.g. https://wealthpulse-api.onrender.com
+#
+# Note: GitHub cron is best-effort and can drift 5-15 minutes — fine here.
+name: keepalive
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: |
+          URL="${{ vars.RENDER_APP_URL }}"
+          if [ -z "$URL" ]; then
+            echo "::error::RENDER_APP_URL repository variable is not set"
+            exit 1
+          fi
+          # generous timeout + retries: a Render cold start can take ~60s
+          curl --fail --silent --show-error \
+               --max-time 90 --retry 3 --retry-delay 15 --retry-all-errors \
+               "${URL%/}/health"

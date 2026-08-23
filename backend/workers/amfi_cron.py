@@ -61,6 +61,7 @@ async def parse_and_store_navs():
                 """), {"symbol": code, "date": date_str, "price": nav})
                 # Update Redis with latest NAV for this scheme (1-hour TTL)
                 await redis.setex(f"nav:{code}", 3600, str(nav))
+                await redis.setex(f"last:nav:{code}", 604800, str(nav))
                 count += 1
             except Exception as e:
                 print(f"Error for {code}: {e}")
@@ -74,31 +75,62 @@ async def scheduled_nav_refresh():
 
 
 async def take_daily_snapshot():
+    from services.prices import resolve_price
+
+    redis = await get_redis()
     async for db in get_db():
         try:
             result = await db.execute(select(Holding))
             holdings = result.scalars().all()
 
+            # One price lookup per (symbol, asset_type), shared across users
+            price_cache: dict[tuple, float | None] = {}
             user_totals = {}
             for h in holdings:
-                uid = h.user_id
                 invested = float(h.buy_price) * float(h.quantity)
-                current = invested  # fallback — Redis lookup optional here
-                user_totals.setdefault(uid, {"invested": 0, "value": 0})
-                user_totals[uid]["invested"] += invested
-                user_totals[uid]["value"] += current
+                pkey = (h.symbol, h.asset_type)
+                if pkey not in price_cache:
+                    price, _stale = await resolve_price(h.symbol, h.asset_type, redis, db)
+                    price_cache[pkey] = price
+                price = price_cache[pkey]
+                current = price * float(h.quantity) if price and price > 0 else invested
+
+                totals = user_totals.setdefault(
+                    h.user_id, {"invested": 0.0, "value": 0.0, "breakdown": {}}
+                )
+                totals["invested"] += invested
+                totals["value"] += current
+                bd = totals["breakdown"].setdefault(
+                    h.asset_type, {"invested": 0.0, "value": 0.0}
+                )
+                bd["invested"] += invested
+                bd["value"] += current
 
             for uid, totals in user_totals.items():
+                breakdown = {
+                    atype: {"invested": round(v["invested"], 2), "value": round(v["value"], 2)}
+                    for atype, v in totals["breakdown"].items()
+                }
                 stmt = pg_insert(PortfolioSnapshot).values(
                     user_id=uid,
                     snapshot_date=date.today(),
-                    total_value=totals["value"],
-                    total_cost=totals["invested"],
-                ).on_conflict_do_nothing()
+                    total_value=round(totals["value"], 2),
+                    total_cost=round(totals["invested"], 2),
+                    breakdown=breakdown,
+                )
+                # re-running the same day corrects the snapshot
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["user_id", "snapshot_date"],
+                    set_={
+                        "total_value": stmt.excluded.total_value,
+                        "total_cost": stmt.excluded.total_cost,
+                        "breakdown": stmt.excluded.breakdown,
+                    },
+                )
                 await db.execute(stmt)
 
             await db.commit()
-            print("✅ Daily snapshot saved")
+            print(f"✅ Daily snapshot saved for {len(user_totals)} users")
         except Exception as e:
             print(f"⚠️ Snapshot error: {e}")
         break

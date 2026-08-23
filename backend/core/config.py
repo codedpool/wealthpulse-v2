@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     # ── Cache ─────────────────────────────────────────────────────────────────
     REDIS_URL: str
 
+    # ── Workers ───────────────────────────────────────────────────────────────
+    # Set false on extra instances / local dev against shared services so the
+    # price workers, AMFI cron and backfills only run in one process.
+    WORKERS_ENABLED: bool = True
+
     # ── Auth0 ─────────────────────────────────────────────────────────────────
     AUTH0_DOMAIN: str                          # e.g. dev-qt0cqogfgwebky55.us.auth0.com
     AUTH0_AUDIENCE: str = "wealthpulse-local"  # set to AUTH0_CLIENT_ID in production

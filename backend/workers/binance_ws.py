@@ -27,6 +27,8 @@ async def binance_price_worker():
                         symbol = data["s"].lower()
                         price  = data["c"]
                         await redis_client.setex(f"price:crypto:{symbol}", 30, price)
+                        # last-known copy so prices survive quiet markets / worker gaps
+                        await redis_client.setex(f"last:price:crypto:{symbol}", 604800, price)
                         await redis_client.publish(
                             "prices",
                             json.dumps({"symbol": symbol, "price": price, "type": "crypto"})

@@ -1,14 +1,16 @@
 # WealthPulse API Entry Point
 import asyncio
 import os
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request
+from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 from core.limiter import limiter
 from core.redis import init_redis
-from core.database import get_db
+from core.database import get_db, with_db_retry
 from core.config import settings
 from api.portfolio import router as portfolio_router
 from api.stream import router as stream_router
@@ -61,6 +63,11 @@ async def startup():
         print(f"WARNING: Redis unavailable on startup: {e}")
         print("App will continue without caching. Live prices will be unavailable.")
 
+    if not settings.WORKERS_ENABLED:
+        print("WORKERS_ENABLED=false — skipping price workers, AMFI cron and backfills")
+        print("WealthPulse v2 started (API only)")
+        return
+
     # Binance worker
     try:
         asyncio.create_task(binance_price_worker())
@@ -89,9 +96,11 @@ async def startup():
     # Stock history backfill
     try:
         async def run_backfill():
-            async for db in get_db():
-                await backfill_stock_history(db)
-                break
+            async def _do():
+                async for db in get_db():
+                    await backfill_stock_history(db)
+                    break
+            await with_db_retry(_do)
 
         asyncio.create_task(run_backfill())
     except Exception as e:
@@ -100,9 +109,11 @@ async def startup():
     # Crypto history backfill
     try:
         async def run_crypto_backfill():
-            async for db in get_db():
-                await backfill_crypto_history(db)
-                break
+            async def _do():
+                async for db in get_db():
+                    await backfill_crypto_history(db)
+                    break
+            await with_db_retry(_do)
 
         asyncio.create_task(run_crypto_backfill())
     except Exception as e:
@@ -124,6 +135,42 @@ app.include_router(crypto_router)
 @app.get("/")
 async def root():
     return {"status": "WealthPulse v2 running"}
+
+
+@app.get("/health")
+async def health():
+    """Keep-alive + status endpoint, hit by an external pinger.
+
+    Runs a real SQL query (counts as activity for Supabase, whose free
+    projects pause after ~7 idle days and need a MANUAL restore from the
+    dashboard) and a real Redis write (resets Upstash's 14-day inactivity
+    clock). Always returns 200 so the pinger doesn't alert on partial
+    outages; the body says which dependency is down.
+    """
+    from core.redis import get_redis
+
+    db_status = "ok"
+    redis_status = "ok"
+
+    try:
+        async for db in get_db():
+            await db.execute(text("SELECT 1"))
+            break
+    except Exception as e:
+        db_status = "down"
+        print(f"[health] database check failed: {e!r}")
+
+    try:
+        redis = await get_redis()
+        await redis.ping()  # raises when Redis is unreachable
+        await redis.setex(
+            "keepalive:ping", 86400, datetime.now(timezone.utc).isoformat()
+        )
+    except Exception as e:
+        redis_status = "down"
+        print(f"[health] redis check failed: {e!r}")
+
+    return {"status": "ok", "db": db_status, "redis": redis_status}
 
 
 @app.exception_handler(Exception)

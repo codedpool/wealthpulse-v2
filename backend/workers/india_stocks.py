@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 import yfinance as yf
 from sqlalchemy import select
 from core.database import AsyncSessionLocal
@@ -10,6 +11,13 @@ FALLBACK_SYMBOLS = [
     "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS",
     "ICICIBANK.NS", "WIPRO.NS", "SBIN.NS", "BAJFINANCE.NS"
 ]
+
+# No need to hit Postgres on every 60s poll — the symbol list changes only
+# when holdings change, so it is cached and refreshed rarely to keep load
+# off the free-tier database.
+SYMBOL_CACHE_TTL = 600  # seconds
+_symbol_cache: list[str] = []
+_symbol_cache_at: float = 0.0
 
 
 async def get_nse_symbols_from_holdings() -> list[str]:
@@ -31,6 +39,19 @@ async def get_nse_symbols_from_holdings() -> list[str]:
         print(f"⚠️ Error fetching NSE symbols from holdings: {e}")
         return []
 
+
+async def get_cached_nse_symbols() -> list[str]:
+    """Return NSE symbols, hitting the database at most every SYMBOL_CACHE_TTL."""
+    global _symbol_cache, _symbol_cache_at
+    now = time.monotonic()
+    if _symbol_cache and now - _symbol_cache_at < SYMBOL_CACHE_TTL:
+        return _symbol_cache
+    symbols = await get_nse_symbols_from_holdings()
+    if symbols:
+        _symbol_cache = symbols
+        _symbol_cache_at = now
+    return symbols
+
 async def india_stocks_worker():
     from core.redis import get_redis
     redis_client = await get_redis()
@@ -38,8 +59,8 @@ async def india_stocks_worker():
 
     while True:
         try:
-            # Fetch symbols dynamically from holdings
-            symbols = await get_nse_symbols_from_holdings()
+            # Fetch symbols from holdings (cached, see SYMBOL_CACHE_TTL)
+            symbols = await get_cached_nse_symbols()
             if not symbols:
                 symbols = FALLBACK_SYMBOLS
                 print("ℹ️ Using fallback symbols (no NSE holdings in database)")
@@ -71,6 +92,7 @@ async def india_stocks_worker():
                 price = str(round(float(closes[symbol]), 2))
                 redis_key = f"price:stock:{symbol.lower().replace('.', '_')}"
                 await redis_client.setex(redis_key, 120, price)
+                await redis_client.setex(f"last:{redis_key}", 604800, price)
                 await redis_client.publish(
                     "prices",
                     json.dumps({"symbol": symbol.lower(), "price": price, "type": "india_stock"})

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 import time
 import yfinance as yf
 from sqlalchemy import select
@@ -84,12 +85,17 @@ async def india_stocks_worker():
                 await asyncio.sleep(60)
                 continue
 
-            closes = tickers["Close"].iloc[-1]
+            # the final 1m bar is often unfilled per ticker, so carry the
+            # last real print forward instead of reading a NaN row
+            closes = tickers["Close"].ffill().iloc[-1]
 
             for symbol in symbols:
                 if symbol not in closes.index:
                     continue
-                price = str(round(float(closes[symbol]), 2))
+                close = float(closes[symbol])
+                if math.isnan(close):
+                    continue
+                price = str(round(close, 2))
                 redis_key = f"price:stock:{symbol.lower().replace('.', '_')}"
                 await redis_client.setex(redis_key, 120, price)
                 await redis_client.setex(f"last:{redis_key}", 604800, price)

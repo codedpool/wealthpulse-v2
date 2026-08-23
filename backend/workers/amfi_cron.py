@@ -52,8 +52,9 @@ async def parse_and_store_navs():
             if code not in active:
                 continue
             try:
-                nav = float(parts[4].strip())
-                date_str = parts[5].strip()
+                # AMFI added Plan/Option columns; NAV and date are always last
+                nav = float(parts[-2].strip())
+                date_str = parts[-1].strip()
                 await db.execute(text("""
                     INSERT INTO price_history (symbol, asset_type, price_date, close_price)
                     VALUES (:symbol, 'mutualfund', TO_DATE(:date, 'DD-Mon-YYYY'), :price)
